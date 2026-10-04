@@ -39,6 +39,7 @@ Product features that make the MVP feel like a marketing SaaS product.
 
 Only implement after the core demo is stable.
 
+- [ ] Spring Security & JWT Token Rotation (Post-App Readiness)
 - [ ] Scheduling
 - [ ] Webhooks
 - [ ] Parallel branches

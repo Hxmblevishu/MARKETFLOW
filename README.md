@@ -49,8 +49,8 @@ Sales       Email
 - **Frontend:** Next.js / React
 - **Workflow Canvas:** React Flow
 - **Styling:** Tailwind CSS
-- **Backend:** Node.js / Express
-- **Database:** PostgreSQL / Supabase
+- **Backend:** Java 21 / Spring Boot 3.3.4
+- **Database:** PostgreSQL (H2 for in-memory testing)
 - **AI:** OpenAI API (optional innovation layer)
 - **API:** REST
 - **Deployment:** Vercel + backend hosting of choice
@@ -100,11 +100,12 @@ cd frontend
 npm install
 ```
 
-### 3. Install backend
+### 3. Build backend
 
 ```bash
-cd ../backend
-npm install
+cd backend
+.\mvnw.cmd clean compile   # Windows PowerShell / CMD
+# or: ./mvnw clean compile # Linux / Mac
 ```
 
 ### 4. Configure environment
@@ -113,13 +114,15 @@ npm install
 cp .env.example .env
 ```
 
-Fill in the required values.
+Ensure your local PostgreSQL service is running and configure `backend/.env`.
 
 ### 5. Start backend
 
 ```bash
 cd backend
-npm run dev
+.\mvnw.cmd spring-boot:run   # Windows PowerShell / CMD
+# or: ./mvnw spring-boot:run # Linux / Mac
+# or: mvn spring-boot:run
 ```
 
 ### 6. Start frontend
