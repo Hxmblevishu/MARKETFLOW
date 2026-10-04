@@ -177,6 +177,7 @@ public class WorkflowTemplateDataSeeder implements CommandLineRunner {
                     "Live production pipeline demonstrating AI lead scoring, conditional branching, and multi-channel alerting.",
                     objectMapper.writeValueAsString(demoGraph)
             );
+            demoWorkflow.setId("wf_001");
             demoWorkflow.setStatus(com.marketflow.model.enums.WorkflowStatus.ACTIVE);
             com.marketflow.model.Workflow savedWf = workflowRepository.save(demoWorkflow);
 

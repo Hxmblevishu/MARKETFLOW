@@ -31,7 +31,7 @@ export const ExecutionsPage: React.FC = () => {
       });
       setApiStatus(`Dispatched live: Execution #${res.executionId} (${res.status})`);
     } catch {
-      setApiStatus('Simulated locally (Start backend on :5000 to stream live)');
+      setApiStatus('Simulated locally (Connected to backend on :8080 / Render cloud to stream live)');
     }
   };
 

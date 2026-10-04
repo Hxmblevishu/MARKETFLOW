@@ -40,7 +40,7 @@ export const WorkflowsPage: React.FC<Props> = ({ onNavigateHome }) => {
       });
       setApiNotice(`Backend: Execution #${res.executionId} (${res.status})`);
     } catch {
-      setApiNotice('Simulated locally (Start backend on :5000 for live execution)');
+      setApiNotice('Simulated locally (Connected to backend on :8080 / Render cloud for live execution)');
     }
 
     const nodes = activeWorkflow.definition.nodes;
