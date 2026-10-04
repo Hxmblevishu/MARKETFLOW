@@ -24,15 +24,30 @@ public class WorkflowTemplateDataSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(WorkflowTemplateDataSeeder.class);
 
     private final WorkflowTemplateRepository templateRepository;
+    private final com.marketflow.repository.WorkflowRepository workflowRepository;
+    private final com.marketflow.repository.ExecutionRepository executionRepository;
+    private final com.marketflow.repository.ExecutionStepRepository stepRepository;
     private final ObjectMapper objectMapper;
 
-    public WorkflowTemplateDataSeeder(WorkflowTemplateRepository templateRepository, ObjectMapper objectMapper) {
+    public WorkflowTemplateDataSeeder(WorkflowTemplateRepository templateRepository,
+                                      com.marketflow.repository.WorkflowRepository workflowRepository,
+                                      com.marketflow.repository.ExecutionRepository executionRepository,
+                                      com.marketflow.repository.ExecutionStepRepository stepRepository,
+                                      ObjectMapper objectMapper) {
         this.templateRepository = templateRepository;
+        this.workflowRepository = workflowRepository;
+        this.executionRepository = executionRepository;
+        this.stepRepository = stepRepository;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public void run(String... args) {
+        seedTemplates();
+        seedDemoWorkflowAndExecutions();
+    }
+
+    private void seedTemplates() {
         if (templateRepository.count() > 0) {
             log.info("Workflow templates already seeded (count: {}). Skipping seeder.", templateRepository.count());
             return;
@@ -74,6 +89,21 @@ public class WorkflowTemplateDataSeeder implements CommandLineRunner {
                     )
             );
 
+            // Template 3: Abandoned Cart Recovery & VIP Escalation
+            WorkflowGraphDto t3Graph = new WorkflowGraphDto(
+                    List.of(
+                            createNode("t3_trigger", "webhook_trigger", 250, 50, Map.of("label", "Shopify Abandoned Checkout")),
+                            createNode("t3_cond", "condition", 250, 180, Map.of("label", "High Value Cart (>$200)?", "field", "cartValue", "operator", ">=", "value", 200)),
+                            createNode("t3_slack", "action_slack", 100, 310, Map.of("label", "Notify VIP Concierge", "channel", "#vip-sales")),
+                            createNode("t3_email", "action_email", 400, 310, Map.of("label", "Send 10% Discount Drip", "subject", "Complete your order with 10% off!"))
+                    ),
+                    List.of(
+                            new EdgeDto("e3_1", "t3_trigger", "t3_cond"),
+                            createEdge("e3_2", "t3_cond", "t3_slack", "true", "VIP Cart (>= $200)"),
+                            createEdge("e3_3", "t3_cond", "t3_email", "false", "Standard Cart (< $200)")
+                    )
+            );
+
             templateRepository.save(new WorkflowTemplate(
                     "AI Lead Scoring & Omnichannel Routing",
                     "Lead Generation",
@@ -88,9 +118,83 @@ public class WorkflowTemplateDataSeeder implements CommandLineRunner {
                     objectMapper.writeValueAsString(t2Graph)
             ));
 
-            log.info("Successfully seeded 2 workflow templates.");
+            templateRepository.save(new WorkflowTemplate(
+                    "Abandoned Cart Recovery & VIP Escalation",
+                    "E-Commerce",
+                    "Monitors high-value checkout abandonments, alerts sales for concierge recovery, and issues recovery discount codes.",
+                    objectMapper.writeValueAsString(t3Graph)
+            ));
+
+            log.info("Successfully seeded 3 workflow templates.");
         } catch (Exception ex) {
             log.error("Failed to seed workflow templates: {}", ex.getMessage(), ex);
+        }
+    }
+
+    private void seedDemoWorkflowAndExecutions() {
+        if (workflowRepository.count() > 0) {
+            return;
+        }
+
+        try {
+            WorkflowGraphDto demoGraph = new WorkflowGraphDto(
+                    List.of(
+                            createNode("demo_trig", "webhook_trigger", 250, 50, Map.of("label", "Instagram Lead Webhook")),
+                            createNode("demo_ai", "ai_lead_qualifier", 250, 180, Map.of("label", "AI Lead Scoring", "threshold", 70)),
+                            createNode("demo_cond", "condition", 250, 310, Map.of("label", "Score >= 70?", "field", "score", "operator", ">=", "value", 70)),
+                            createNode("demo_slack", "action_slack", 100, 440, Map.of("label", "Sales Alert Slack", "channel", "#enterprise-leads")),
+                            createNode("demo_email", "action_email", 400, 440, Map.of("label", "Nurture Email", "subject", "Accelerate with Marketflow"))
+                    ),
+                    List.of(
+                            new EdgeDto("de1", "demo_trig", "demo_ai"),
+                            new EdgeDto("de2", "demo_ai", "demo_cond"),
+                            createEdge("de3", "demo_cond", "demo_slack", "true", "Qualified (>= 70)"),
+                            createEdge("de4", "demo_cond", "demo_email", "false", "Nurture (< 70)")
+                    )
+            );
+
+            com.marketflow.model.Workflow demoWorkflow = new com.marketflow.model.Workflow(
+                    "Instagram Lead Qualification Pipeline",
+                    "Live production pipeline demonstrating AI lead scoring, conditional branching, and multi-channel alerting.",
+                    objectMapper.writeValueAsString(demoGraph)
+            );
+            demoWorkflow.setStatus(com.marketflow.model.enums.WorkflowStatus.ACTIVE);
+            com.marketflow.model.Workflow savedWf = workflowRepository.save(demoWorkflow);
+
+            // Seed 1 Successful High-Value Execution
+            com.marketflow.model.Execution exec1 = new com.marketflow.model.Execution(savedWf, "{\"email\":\"aarav.sharma@enterprise.com\",\"company\":\"TechCorp\",\"budget\":75000,\"title\":\"VP Growth\"}");
+            exec1.setStatus(com.marketflow.model.enums.ExecutionStatus.COMPLETED);
+            exec1.setStartedAt(java.time.Instant.now().minusSeconds(3600));
+            exec1.setCompletedAt(java.time.Instant.now().minusSeconds(3598));
+            exec1.setOutputData("{\"score\":88,\"tier\":\"HOT\",\"qualified\":true}");
+            com.marketflow.model.Execution savedExec1 = executionRepository.save(exec1);
+
+            com.marketflow.model.ExecutionStep step1 = new com.marketflow.model.ExecutionStep(savedExec1, "demo_trig", "webhook_trigger", "Instagram Lead Webhook");
+            step1.setStatus(com.marketflow.model.enums.StepStatus.COMPLETED);
+            step1.setDurationMs(45L);
+            step1.setStartedAt(savedExec1.getStartedAt());
+            step1.setCompletedAt(savedExec1.getStartedAt().plusMillis(45));
+            stepRepository.save(step1);
+
+            com.marketflow.model.ExecutionStep step2 = new com.marketflow.model.ExecutionStep(savedExec1, "demo_ai", "ai_lead_qualifier", "AI Lead Scoring");
+            step2.setStatus(com.marketflow.model.enums.StepStatus.COMPLETED);
+            step2.setOutputData("{\"score\":88,\"tier\":\"HOT\",\"rationale\":\"Enterprise VP with $75k+ budget\"}");
+            step2.setDurationMs(210L);
+            step2.setStartedAt(savedExec1.getStartedAt().plusMillis(45));
+            step2.setCompletedAt(savedExec1.getStartedAt().plusMillis(255));
+            stepRepository.save(step2);
+
+            // Seed 1 Failed Edge-Case Execution
+            com.marketflow.model.Execution exec2 = new com.marketflow.model.Execution(savedWf, "{\"email\":\"invalid-contact@test.com\"}");
+            exec2.setStatus(com.marketflow.model.enums.ExecutionStatus.FAILED);
+            exec2.setStartedAt(java.time.Instant.now().minusSeconds(1800));
+            exec2.setCompletedAt(java.time.Instant.now().minusSeconds(1799));
+            exec2.setErrorMessage("External notification delivery failed: 504 Gateway Timeout");
+            executionRepository.save(exec2);
+
+            log.info("Successfully seeded demo workflow and past execution records.");
+        } catch (Exception ex) {
+            log.warn("Could not seed demo workflow: {}", ex.getMessage());
         }
     }
 
