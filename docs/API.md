@@ -1,9 +1,15 @@
 # MARKETFLOW API
+ 
+Live Cloud Base URL (Render):
+ 
+```text
+https://marketflow-pb8i.onrender.com/api
+```
 
-Base URL:
+Local Development Base URL:
 
 ```text
-http://localhost:5000/api
+http://localhost:8080/api
 ```
 
 ## Authentication

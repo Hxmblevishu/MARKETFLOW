@@ -166,4 +166,70 @@ class Phase7AiInnovationTests {
         assertThrows(AiServiceException.class, () -> generatorService.generateWorkflow(new AiGenerateWorkflowRequest("")));
         assertThrows(AiServiceException.class, () -> generatorService.generateWorkflow(new AiGenerateWorkflowRequest(null)));
     }
+
+    @Test
+    @DisplayName("AI Loophole: Emojis, punctuation-only, and weird whitespace do not crash name generator")
+    void testEmojiAndSpecialCharPromptHandling() {
+        // Punctuation-only prompt
+        AiGenerateWorkflowResponse resp1 = generatorService.generateWorkflow(new AiGenerateWorkflowRequest("??? !!! @@@"));
+        assertNotNull(resp1.getWorkflow().getName());
+        assertFalse(resp1.getWorkflow().getName().isBlank());
+
+        // Emoji prompt
+        AiGenerateWorkflowResponse resp2 = generatorService.generateWorkflow(new AiGenerateWorkflowRequest("🚀🔥 Automate Instagram Lead Scoring and CRM Sync"));
+        assertNotNull(resp2.getWorkflow().getName());
+        assertTrue(resp2.getWorkflow().getName().contains("Automate"));
+
+        // Prompt with weird tab/newline spacing
+        AiGenerateWorkflowResponse resp3 = generatorService.generateWorkflow(new AiGenerateWorkflowRequest("   \t  qualify \n\n leads and   email   \t"));
+        assertNotNull(resp3.getWorkflow().getName());
+    }
+
+    @Test
+    @DisplayName("AI Loophole: Budget suffixes like '50k', '$100K', '1.5M' parsed accurately without degradation")
+    void testBudgetSuffixParsing() {
+        NodeDto node = new NodeDto();
+        node.setId("ai_node_suffix");
+        node.setType("ai_lead_qualifier");
+        node.setData(Map.of(
+                "budget", "$50k",
+                "companySize", "100",
+                "title", "Director",
+                "industry", "SaaS"
+        ));
+
+        ExecutionContext context = new ExecutionContext("exec_suffix", "wf_suffix", Map.of());
+        NodeExecutionResult result = qualificationHandler.execute(node, context);
+        assertTrue(result.isSuccess());
+
+        Map<String, Object> output = (Map<String, Object>) result.getOutputData();
+        int score = (int) output.get("score");
+        // Budget >= 50k gives 40 pts, size 100 gives 25 pts, director gives 20 pts, saas gives 10 pts = 95 pts (HOT)
+        assertTrue(score >= 75, "Expected >= 75 for 50k budget, got: " + score);
+        assertEquals("HOT", output.get("tier"));
+    }
+
+    @Test
+    @DisplayName("AI Loophole: Industry inferred from company or message when industry field is omitted")
+    void testIndustryInferenceFallback() {
+        NodeDto node = new NodeDto();
+        node.setId("ai_node_infer");
+        node.setType("ai_lead_qualifier");
+        node.setData(Map.of(
+                "budget", 20000,
+                "companySize", 50,
+                "title", "VP of Sales",
+                "company", "Acme Fintech Global",
+                "message", "Looking for B2B SaaS automation"
+        ));
+
+        ExecutionContext context = new ExecutionContext("exec_infer", "wf_infer", Map.of());
+        NodeExecutionResult result = qualificationHandler.execute(node, context);
+        assertTrue(result.isSuccess());
+
+        Map<String, Object> output = (Map<String, Object>) result.getOutputData();
+        String rationale = (String) output.get("rationale");
+        assertTrue(rationale.toLowerCase().contains("fintech") || rationale.toLowerCase().contains("saas"),
+                "Expected rationale to mention inferred fintech/saas, got: " + rationale);
+    }
 }

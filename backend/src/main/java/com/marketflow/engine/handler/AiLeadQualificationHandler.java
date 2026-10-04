@@ -159,7 +159,17 @@ public class AiLeadQualificationHandler implements NodeExecutor {
         }
 
         // 4. Industry Fit (up to 10 pts)
-        String industry = String.valueOf(lead.getOrDefault("industry", "")).toLowerCase();
+        String industry = String.valueOf(lead.getOrDefault("industry", "")).toLowerCase().trim();
+        if (industry.isBlank()) {
+            String company = String.valueOf(lead.getOrDefault("company", "")).toLowerCase();
+            String message = String.valueOf(lead.getOrDefault("message", "")).toLowerCase();
+            if (company.contains("fintech") || message.contains("fintech")) industry = "fintech";
+            else if (company.contains("saas") || message.contains("saas")) industry = "saas";
+            else if (company.contains("ecommerce") || message.contains("ecommerce") || message.contains("e-commerce")) industry = "e-commerce";
+            else if (company.contains("tech") || message.contains("tech")) industry = "tech";
+            else if (company.contains("health") || message.contains("health")) industry = "healthcare";
+        }
+
         if (industry.contains("saas") || industry.contains("tech") || industry.contains("software")
                 || industry.contains("e-commerce") || industry.contains("fintech") || industry.contains("healthcare")) {
             score += 10;
@@ -190,10 +200,22 @@ public class AiLeadQualificationHandler implements NodeExecutor {
 
     private double parseNumeric(Object val) {
         if (val == null) return 0;
+        if (val instanceof Number n) {
+            return n.doubleValue();
+        }
         try {
-            String str = val.toString().replaceAll("[^0-9.]", "");
-            if (str.isBlank()) return 0;
-            return Double.parseDouble(str);
+            String str = val.toString().trim().toLowerCase();
+            double multiplier = 1.0;
+            if (str.endsWith("k")) {
+                multiplier = 1000.0;
+                str = str.substring(0, str.length() - 1);
+            } else if (str.endsWith("m")) {
+                multiplier = 1000000.0;
+                str = str.substring(0, str.length() - 1);
+            }
+            String clean = str.replaceAll("[^0-9.]", "");
+            if (clean.isBlank()) return 0;
+            return Double.parseDouble(clean) * multiplier;
         } catch (Exception e) {
             return 0;
         }

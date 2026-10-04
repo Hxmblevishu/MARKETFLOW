@@ -51,9 +51,13 @@ Sales       Email
 - **Styling:** Tailwind CSS
 - **Backend:** Java 21 / Spring Boot 3.3.4
 - **Database:** PostgreSQL (H2 for in-memory testing)
-- **AI:** OpenAI API (optional innovation layer)
-- **API:** REST
-- **Deployment:** Vercel + backend hosting of choice
+- **Deployment:** Render (Live Backend) + Neon Cloud PostgreSQL
+
+## Live Cloud Deployment
+
+- **Live Backend API:** [https://marketflow-pb8i.onrender.com/api](https://marketflow-pb8i.onrender.com/api)
+- **Interactive Swagger UI:** [https://marketflow-pb8i.onrender.com/api/swagger-ui/index.html](https://marketflow-pb8i.onrender.com/api/swagger-ui/index.html)
+- **Service Health Check:** [https://marketflow-pb8i.onrender.com/api/health](https://marketflow-pb8i.onrender.com/api/health)
 
 ## MVP Scope
 

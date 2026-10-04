@@ -162,8 +162,30 @@ public class DagExecutionEngine {
 
     private boolean shouldFollowEdge(EdgeDto edge, String selectedHandle) {
         if (selectedHandle != null && (selectedHandle.equalsIgnoreCase("true") || selectedHandle.equalsIgnoreCase("false"))) {
-            // For conditional branching, the edge must explicitly match the evaluated branch
-            return edge.getSourceHandle() != null && edge.getSourceHandle().equalsIgnoreCase(selectedHandle);
+            // For conditional boolean branching, the edge must explicitly match the evaluated branch
+            if (edge.getSourceHandle() == null || edge.getSourceHandle().isBlank()) {
+                return false;
+            }
+            return edge.getSourceHandle().equalsIgnoreCase(selectedHandle)
+                    || (selectedHandle.equalsIgnoreCase("true") && edge.getSourceHandle().equalsIgnoreCase("qualified"))
+                    || (selectedHandle.equalsIgnoreCase("false") && edge.getSourceHandle().equalsIgnoreCase("unqualified"));
+        }
+        if (selectedHandle != null && (selectedHandle.equalsIgnoreCase("hot") || selectedHandle.equalsIgnoreCase("warm") || selectedHandle.equalsIgnoreCase("cold"))) {
+            if (edge.getSourceHandle() == null || edge.getSourceHandle().isBlank() || edge.getSourceHandle().equalsIgnoreCase("default")) {
+                return true;
+            }
+            if (edge.getSourceHandle().equalsIgnoreCase(selectedHandle)) {
+                return true;
+            }
+            if ((selectedHandle.equalsIgnoreCase("hot") || selectedHandle.equalsIgnoreCase("warm"))
+                    && (edge.getSourceHandle().equalsIgnoreCase("true") || edge.getSourceHandle().equalsIgnoreCase("qualified"))) {
+                return true;
+            }
+            if (selectedHandle.equalsIgnoreCase("cold")
+                    && (edge.getSourceHandle().equalsIgnoreCase("false") || edge.getSourceHandle().equalsIgnoreCase("unqualified"))) {
+                return true;
+            }
+            return false;
         }
         if (edge.getSourceHandle() == null || edge.getSourceHandle().isBlank() || edge.getSourceHandle().equalsIgnoreCase("default")) {
             return true;

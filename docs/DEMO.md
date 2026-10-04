@@ -25,8 +25,10 @@ Password: <SET_BEFORE_SUBMISSION>
 
 ```text
 Frontend: <DEPLOYED_FRONTEND_URL>
-Backend:  <DEPLOYED_BACKEND_URL>
-Repository: <GITHUB_REPOSITORY_URL>
+Backend:  https://marketflow-pb8i.onrender.com/api
+Swagger:  https://marketflow-pb8i.onrender.com/api/swagger-ui/index.html
+Health:   https://marketflow-pb8i.onrender.com/api/health
+Repository: https://github.com/Hxmblevishu/MARKETFLOW
 Video: <LOOM_OR_VIDEO_URL>
 Slides: <SLIDE_DECK_URL>
 ```

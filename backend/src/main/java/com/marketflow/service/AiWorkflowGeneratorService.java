@@ -39,7 +39,11 @@ public class AiWorkflowGeneratorService {
 
         try {
             AiGenerateWorkflowResponse.GeneratedWorkflow workflow = synthesizeWorkflowFromPrompt(prompt);
+            // Verify synthesized graph against DAG validation rules
+            validationService.validateWorkflowGraph(new com.marketflow.dto.WorkflowGraphDto(workflow.getNodes(), workflow.getEdges()));
             return new AiGenerateWorkflowResponse(workflow);
+        } catch (AiServiceException ase) {
+            throw ase;
         } catch (Exception ex) {
             log.error("Failed to generate workflow from prompt: {}", ex.getMessage(), ex);
             throw new AiServiceException("AI_GENERATOR", "Workflow generation failed: " + ex.getMessage(), ex);
@@ -213,15 +217,23 @@ public class AiWorkflowGeneratorService {
     }
 
     private String extractWorkflowName(String prompt) {
-        String clean = prompt.replaceAll("[^a-zA-Z0-9 ]", "").trim();
+        String clean = prompt.replaceAll("[^a-zA-Z0-9 ]", "").replaceAll("\\s+", " ").trim();
+        if (clean.isEmpty()) {
+            return "AI Generated Marketing Workflow";
+        }
         if (clean.length() <= 35) {
-            return clean.substring(0, 1).toUpperCase() + clean.substring(1);
+            return Character.toUpperCase(clean.charAt(0)) + (clean.length() > 1 ? clean.substring(1) : "");
         }
         String[] words = clean.split("\\s+");
         StringBuilder name = new StringBuilder();
         for (int i = 0; i < Math.min(5, words.length); i++) {
-            name.append(words[i].substring(0, 1).toUpperCase()).append(words[i].substring(1)).append(" ");
+            if (!words[i].isBlank()) {
+                name.append(Character.toUpperCase(words[i].charAt(0)))
+                    .append(words[i].length() > 1 ? words[i].substring(1) : "")
+                    .append(" ");
+            }
         }
-        return name.toString().trim() + " Flow";
+        String result = name.toString().trim();
+        return result.isEmpty() ? "AI Generated Marketing Workflow" : result + " Flow";
     }
 }
