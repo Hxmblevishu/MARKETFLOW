@@ -93,37 +93,37 @@ flowchart TD
 
 ---
 
-### Phase 3: DTOs, Serialization & Graph Schema Validation
-* **Estimated Time:** 15:30 – 16:00
+### Phase 3: DTOs, Serialization & Graph Schema Validation [COMPLETED]
+* **Status:** ✅ Completed & Verified
 * **Goal:** Define request/response contracts matching frontend React Flow schemas and validate workflow graph integrity.
 * **Key Tasks:**
-  1. Create strongly-typed DTOs:
+  1. Create strongly-typed DTOs: [✅ Done]
      - `WorkflowDto`, `NodeDto` (`id`, `type`, `position`, `data`), `EdgeDto` (`id`, `source`, `target`, `sourceHandle`, `targetHandle`, `label`).
      - `ExecuteWorkflowRequest`, `ExecutionResponse`, `ExecutionStepDto`.
      - `AiGenerateWorkflowRequest`, `AiGenerateWorkflowResponse`.
-  2. Build `GraphValidationService`:
+  2. Build `GraphValidationService`: [✅ Done]
      - Checks that a workflow has at least one valid trigger node.
      - Checks node reachability (no orphan nodes or broken connections).
-     - Cycle detection (prevents infinite recursive loops in execution).
+     - Cycle detection (prevents infinite recursive loops in execution using Kahn's algorithm).
      - Validates supported node types and required configuration parameters.
-* **Deliverable:** DTO mapping and robust graph validation preventing malformed workflows from running.
+* **Deliverable:** DTO mapping and robust graph validation preventing malformed workflows from running (5/5 unit tests passing).
 
 ---
 
-### Phase 4: Workflow Execution Engine Core (DAG Traversal & Context)
-* **Estimated Time:** 16:00 – 16:45
+### Phase 4: Workflow Execution Engine Core (DAG Traversal & Context) [COMPLETED]
+* **Status:** ✅ Completed & Verified
 * **Goal:** Build the core graph execution engine that runs nodes topologically.
 * **Key Tasks:**
-  1. Implement `ExecutionContext`:
+  1. Implement `ExecutionContext`: [✅ Done]
      - Holds runtime state: initial trigger payload, accumulated node output variables, global execution flags.
      - Thread-safe payload storage accessible by all downstream nodes.
-  2. Implement `DagExecutionEngine`:
+  2. Implement `DagExecutionEngine`: [✅ Done]
      - Locates the starting trigger node.
      - Traverses downstream nodes following graph edges.
      - Supports branching based on conditional decisions (e.g., following `sourceHandle == "true"` or `sourceHandle == "false"`).
      - Records start/end time and step execution state into `ExecutionStep`.
-  3. Support both Synchronous (for instant dry-run testing) and Asynchronous execution (`@Async` background runs).
-* **Deliverable:** Working execution engine traversing nodes and maintaining step contexts.
+  3. Support both Synchronous (for instant dry-run testing) and Asynchronous execution (`@Async` background runs). [✅ Done]
+* **Deliverable:** Working execution engine traversing nodes and maintaining step contexts (4/4 tests passing for conditional branching, async execution, and cycle detection).
 
 ---
 
