@@ -103,6 +103,7 @@ public class ActionHandler implements NodeExecutor {
                 : null;
 
         boolean webhookDelivered = false;
+        boolean failOnError = Boolean.parseBoolean(data.getOrDefault("failOnError", "false").toString());
         if (webhookUrl != null && !webhookUrl.isBlank() && webhookUrl.startsWith("http")) {
             try {
                 restClient.post()
@@ -114,6 +115,9 @@ public class ActionHandler implements NodeExecutor {
                 webhookDelivered = true;
             } catch (Exception ex) {
                 log.warn("Slack webhook dispatch failed, falling back to simulated receipt: {}", ex.getMessage());
+                if (failOnError) {
+                    return NodeExecutionResult.failed(node.getId(), "Slack webhook dispatch failed: " + ex.getMessage());
+                }
             }
         }
 

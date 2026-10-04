@@ -129,4 +129,29 @@ class GlobalExceptionHandlerTests {
         assertTrue(response.getBody().getError().getMessage().contains("OpenAI"));
         assertTrue(response.getBody().getError().getMessage().contains("Rate limit exceeded"));
     }
+
+    @Test
+    @DisplayName("Should return 409 with WORKFLOW_STATE_CONFLICT for IllegalStateException")
+    void testHandleIllegalStateException() {
+        IllegalStateException ex = new IllegalStateException("Cannot execute a paused workflow: wf_100");
+        ResponseEntity<ApiErrorResponse> response = exceptionHandler.handleIllegalStateException(ex);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("WORKFLOW_STATE_CONFLICT", response.getBody().getError().getCode());
+        assertTrue(response.getBody().getError().getMessage().contains("Cannot execute a paused workflow"));
+    }
+
+    @Test
+    @DisplayName("Should return 409 with DATABASE_CONFLICT for DataIntegrityViolationException")
+    void testHandleDataIntegrityViolation() {
+        org.springframework.dao.DataIntegrityViolationException ex =
+                new org.springframework.dao.DataIntegrityViolationException("Unique constraint violation: idx_workflows_name");
+        ResponseEntity<ApiErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("DATABASE_CONFLICT", response.getBody().getError().getCode());
+        assertTrue(response.getBody().getError().getMessage().contains("Database constraint violation"));
+    }
 }
