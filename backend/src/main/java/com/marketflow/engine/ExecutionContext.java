@@ -24,7 +24,15 @@ public class ExecutionContext {
     public ExecutionContext(String executionId, String workflowId, Map<String, Object> triggerPayload) {
         this.executionId = executionId;
         this.workflowId = workflowId;
-        this.triggerPayload = triggerPayload != null ? new ConcurrentHashMap<>(triggerPayload) : new ConcurrentHashMap<>();
+        this.triggerPayload = new ConcurrentHashMap<>();
+        if (triggerPayload != null) {
+            for (Map.Entry<String, Object> entry : triggerPayload.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    this.triggerPayload.put(entry.getKey(), entry.getValue());
+                    this.variables.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
         this.startedAt = Instant.now();
         // Seed variables with trigger payload under "trigger" namespace
         this.variables.put("trigger", this.triggerPayload);
@@ -34,6 +42,13 @@ public class ExecutionContext {
         if (output != null) {
             nodeOutputs.put(nodeId, output);
             variables.put(nodeId, output);
+            if (output instanceof Map<?, ?> map) {
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        variables.put(entry.getKey().toString(), entry.getValue());
+                    }
+                }
+            }
         }
     }
 
@@ -46,13 +61,21 @@ public class ExecutionContext {
         if (variables.containsKey(key)) {
             return variables.get(key);
         }
-        // Check nested path, e.g. "trigger.email"
+        if (triggerPayload.containsKey(key)) {
+            return triggerPayload.get(key);
+        }
+        // Check nested path, e.g. "trigger.lead.company" or "step_1.output.name"
         if (key.contains(".")) {
-            String[] parts = key.split("\\.", 2);
-            Object root = variables.get(parts[0]);
-            if (root instanceof Map<?, ?> map) {
-                return map.get(parts[1]);
+            String[] parts = key.split("\\.");
+            Object current = variables.containsKey(parts[0]) ? variables.get(parts[0]) : triggerPayload.get(parts[0]);
+            for (int i = 1; i < parts.length && current != null; i++) {
+                if (current instanceof Map<?, ?> map) {
+                    current = map.get(parts[i]);
+                } else {
+                    return null;
+                }
             }
+            return current;
         }
         return null;
     }

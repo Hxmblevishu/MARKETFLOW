@@ -1,9 +1,7 @@
 package com.marketflow.config;
 
 import com.marketflow.dto.ApiErrorResponse;
-import com.marketflow.exception.ExecutionNotFoundException;
-import com.marketflow.exception.InvalidWorkflowGraphException;
-import com.marketflow.exception.WorkflowNotFoundException;
+import com.marketflow.exception.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -28,10 +26,35 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of("EXECUTION_NOT_FOUND", ex.getMessage()));
     }
 
+    @ExceptionHandler(TemplateNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleTemplateNotFound(TemplateNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of("TEMPLATE_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("DUPLICATE_RESOURCE", ex.getMessage()));
+    }
+
     @ExceptionHandler(InvalidWorkflowGraphException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidWorkflowGraph(InvalidWorkflowGraphException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiErrorResponse.of(ex.getErrorCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(NodeExecutionException.class)
+    public ResponseEntity<ApiErrorResponse> handleNodeExecutionException(NodeExecutionException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ApiErrorResponse.of("NODE_EXECUTION_FAILED", 
+                        "Node [" + ex.getNodeId() + "] of type [" + ex.getNodeType() + "] failed: " + ex.getMessage()));
+    }
+
+    @ExceptionHandler(AiServiceException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiServiceException(AiServiceException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiErrorResponse.of("AI_SERVICE_ERROR", "[" + ex.getProvider() + "] " + ex.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

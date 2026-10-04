@@ -31,13 +31,17 @@ public class GraphValidationService {
             }
         }
 
-        // 2. Validate Trigger Node exists
+        // 2. Validate Trigger Node exists and is unique
         List<NodeDto> triggerNodes = nodes.stream()
                 .filter(this::isTriggerNode)
                 .toList();
 
         if (triggerNodes.isEmpty()) {
             throw new InvalidWorkflowGraphException("MISSING_TRIGGER", "Workflow must contain at least one trigger node.");
+        }
+        if (triggerNodes.size() > 1) {
+            throw new InvalidWorkflowGraphException("MULTIPLE_TRIGGERS", 
+                    "Workflow must contain exactly one trigger node, but found: " + triggerNodes.size());
         }
 
         // 3. Validate Edges connect existing nodes
@@ -65,8 +69,48 @@ public class GraphValidationService {
             }
         }
 
-        // 5. Detect Cycles (Ensure DAG integrity using Kahn's algorithm)
+        // 5. Validate Reachability from Trigger (Ensure no orphan/unreachable nodes)
+        validateNodeReachability(nodes, edges, triggerNodes.get(0).getId());
+
+        // 6. Detect Cycles (Ensure DAG integrity using Kahn's algorithm)
         detectCycles(nodes, edges);
+    }
+
+    private void validateNodeReachability(List<NodeDto> nodes, List<EdgeDto> edges, String triggerId) {
+        if (nodes.size() <= 1) {
+            return;
+        }
+
+        Map<String, List<String>> adj = new HashMap<>();
+        for (NodeDto node : nodes) {
+            adj.put(node.getId(), new ArrayList<>());
+        }
+        for (EdgeDto edge : edges) {
+            if (adj.containsKey(edge.getSource())) {
+                adj.get(edge.getSource()).add(edge.getTarget());
+            }
+        }
+
+        Set<String> reachable = new HashSet<>();
+        Queue<String> queue = new LinkedList<>();
+        reachable.add(triggerId);
+        queue.add(triggerId);
+
+        while (!queue.isEmpty()) {
+            String curr = queue.poll();
+            for (String next : adj.getOrDefault(curr, Collections.emptyList())) {
+                if (reachable.add(next)) {
+                    queue.add(next);
+                }
+            }
+        }
+
+        for (NodeDto node : nodes) {
+            if (!reachable.contains(node.getId())) {
+                throw new InvalidWorkflowGraphException("UNREACHABLE_NODE", 
+                        "Node [" + node.getId() + "] is not reachable from the trigger node.");
+            }
+        }
     }
 
     public NodeDto findTriggerNode(WorkflowGraphDto graph) {
@@ -80,7 +124,8 @@ public class GraphValidationService {
     public boolean isTriggerNode(NodeDto node) {
         if (node == null || node.getType() == null) return false;
         String type = node.getType().toLowerCase();
-        return type.equals("trigger") || type.startsWith("trigger_") || type.contains("trigger");
+        return type.equals("trigger") || type.startsWith("trigger_") || type.contains("trigger")
+                || type.contains("webhook") || type.contains("schedule");
     }
 
     private void detectCycles(List<NodeDto> nodes, List<EdgeDto> edges) {

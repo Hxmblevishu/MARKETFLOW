@@ -222,4 +222,149 @@ class DagExecutionEngineTests {
         assertNotNull(result.getErrorMessage());
         assertTrue(result.getErrorMessage().contains("circular dependency/cycle") || result.getErrorMessage().contains("CYCLE_DETECTED"));
     }
+
+    @Test
+    @DisplayName("Should handle malformed JSON workflow definition gracefully without crashing")
+    void testMalformedJsonDefinitionFailsGracefully() {
+        Workflow malformedWf = workflowRepository.save(new Workflow("Broken JSON", "Bad syntax", "{ not valid json at all"));
+        Execution execution = executionRepository.save(new Execution(malformedWf, "{}"));
+
+        Execution result = dagExecutionEngine.execute(malformedWf, execution, Map.of("key", "val"));
+
+        assertEquals(ExecutionStatus.FAILED, result.getStatus());
+        assertNotNull(result.getErrorMessage());
+        assertTrue(result.getErrorMessage().toLowerCase().contains("invalid workflow definition") || result.getErrorMessage().contains("JSON"));
+    }
+
+    @Test
+    @DisplayName("Should handle empty workflow definition gracefully")
+    void testEmptyDefinitionFailsGracefully() {
+        Workflow emptyWf = workflowRepository.save(new Workflow("Empty Wf", "No nodes", ""));
+        Execution execution = executionRepository.save(new Execution(emptyWf, "{}"));
+
+        Execution result = dagExecutionEngine.execute(emptyWf, execution, Map.of());
+
+        assertEquals(ExecutionStatus.FAILED, result.getStatus());
+        assertNotNull(result.getErrorMessage());
+    }
+
+    @Test
+    @DisplayName("Should execute fan-out workflow where one trigger branches to multiple actions")
+    void testFanOutMultipleBranches() {
+        String fanOutJson = """
+        {
+          "nodes": [
+            {
+              "id": "node_trigger",
+              "type": "trigger",
+              "data": {"label": "New Customer"}
+            },
+            {
+              "id": "node_slack",
+              "type": "action_slack",
+              "data": {"channel": "#welcome"}
+            },
+            {
+              "id": "node_email",
+              "type": "action_email",
+              "data": {"subject": "Welcome"}
+            }
+          ],
+          "edges": [
+            {"id": "e1", "source": "node_trigger", "target": "node_slack"},
+            {"id": "e2", "source": "node_trigger", "target": "node_email"}
+          ]
+        }
+        """;
+
+        Workflow fanOutWf = workflowRepository.save(new Workflow("Fan-Out Workflow", "Parallel notifications", fanOutJson));
+        Execution execution = executionRepository.save(new Execution(fanOutWf, "{}"));
+
+        Execution result = dagExecutionEngine.execute(fanOutWf, execution, Map.of("customer", "John"));
+
+        assertEquals(ExecutionStatus.COMPLETED, result.getStatus());
+        assertEquals(3, result.getSteps().size(), "Should execute trigger, slack action, and email action");
+    }
+
+    @Test
+    @DisplayName("Should correctly evaluate string CONTAINS condition operator")
+    void testStringContainsConditionOperator() {
+        String stringCondJson = """
+        {
+          "nodes": [
+            {
+              "id": "node_trigger",
+              "type": "trigger",
+              "data": {"label": "Web Visit"}
+            },
+            {
+              "id": "node_cond",
+              "type": "condition",
+              "data": {"field": "source", "operator": "CONTAINS", "value": "google"}
+            },
+            {
+              "id": "node_action",
+              "type": "action_crm",
+              "data": {"label": "Log Google Lead"}
+            }
+          ],
+          "edges": [
+            {"id": "e1", "source": "node_trigger", "target": "node_cond"},
+            {"id": "e2", "source": "node_cond", "target": "node_action", "sourceHandle": "true"}
+          ]
+        }
+        """;
+
+        Workflow wf = workflowRepository.save(new Workflow("Google Source Workflow", "Filter google", stringCondJson));
+
+        // Matching payload
+        Execution execMatch = executionRepository.save(new Execution(wf, "{}"));
+        Execution matchResult = dagExecutionEngine.execute(wf, execMatch, Map.of("source", "https://google.com/search"));
+        assertEquals(ExecutionStatus.COMPLETED, matchResult.getStatus());
+        assertEquals(3, matchResult.getSteps().size());
+
+        // Non-matching payload
+        Execution execNoMatch = executionRepository.save(new Execution(wf, "{}"));
+        Execution noMatchResult = dagExecutionEngine.execute(wf, execNoMatch, Map.of("source", "direct-visit"));
+        assertEquals(ExecutionStatus.COMPLETED, noMatchResult.getStatus());
+        assertEquals(2, noMatchResult.getSteps().size(), "Should not execute node_action when condition is false");
+    }
+
+    @Test
+    @DisplayName("Should safely handle missing condition field without NullPointerException")
+    void testMissingConditionFieldSafelyEvaluatesFalse() {
+        String missingFieldJson = """
+        {
+          "nodes": [
+            {
+              "id": "node_trigger",
+              "type": "trigger",
+              "data": {"label": "Event"}
+            },
+            {
+              "id": "node_cond",
+              "type": "condition",
+              "data": {"field": "non_existent_key", "operator": "==", "value": "vip"}
+            },
+            {
+              "id": "node_action",
+              "type": "action",
+              "data": {"label": "VIP Action"}
+            }
+          ],
+          "edges": [
+            {"id": "e1", "source": "node_trigger", "target": "node_cond"},
+            {"id": "e2", "source": "node_cond", "target": "node_action", "sourceHandle": "true"}
+          ]
+        }
+        """;
+
+        Workflow wf = workflowRepository.save(new Workflow("Missing Key Test", "Test null handling", missingFieldJson));
+        Execution exec = executionRepository.save(new Execution(wf, "{}"));
+
+        Execution result = dagExecutionEngine.execute(wf, exec, Map.of("some_other_field", 123));
+
+        assertEquals(ExecutionStatus.COMPLETED, result.getStatus());
+        assertEquals(2, result.getSteps().size(), "Node action should not execute because missing field evaluated to false");
+    }
 }

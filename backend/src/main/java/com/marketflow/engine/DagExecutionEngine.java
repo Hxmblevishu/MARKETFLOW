@@ -161,10 +161,14 @@ public class DagExecutionEngine {
     }
 
     private boolean shouldFollowEdge(EdgeDto edge, String selectedHandle) {
-        if (edge.getSourceHandle() == null || edge.getSourceHandle().isBlank() || edge.getSourceHandle().equals("default")) {
+        if (selectedHandle != null && (selectedHandle.equalsIgnoreCase("true") || selectedHandle.equalsIgnoreCase("false"))) {
+            // For conditional branching, the edge must explicitly match the evaluated branch
+            return edge.getSourceHandle() != null && edge.getSourceHandle().equalsIgnoreCase(selectedHandle);
+        }
+        if (edge.getSourceHandle() == null || edge.getSourceHandle().isBlank() || edge.getSourceHandle().equalsIgnoreCase("default")) {
             return true;
         }
-        if (selectedHandle == null || selectedHandle.equals("default")) {
+        if (selectedHandle == null || selectedHandle.equalsIgnoreCase("default")) {
             return true;
         }
         return edge.getSourceHandle().equalsIgnoreCase(selectedHandle);

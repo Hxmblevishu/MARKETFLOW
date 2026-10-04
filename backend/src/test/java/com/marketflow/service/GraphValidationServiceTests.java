@@ -97,4 +97,65 @@ class GraphValidationServiceTests {
                 () -> validationService.validateWorkflowGraph(graph));
         assertEquals("INVALID_EDGE_TARGET", ex.getErrorCode());
     }
+
+    @Test
+    @DisplayName("Should reject null or empty graph")
+    void testNullOrEmptyGraphThrowsException() {
+        InvalidWorkflowGraphException exNull = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(null));
+        assertEquals("EMPTY_GRAPH", exNull.getErrorCode());
+
+        WorkflowGraphDto emptyGraph = new WorkflowGraphDto(List.of(), List.of());
+        InvalidWorkflowGraphException exEmpty = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(emptyGraph));
+        assertEquals("EMPTY_GRAPH", exEmpty.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Should reject node with null or blank ID")
+    void testBlankNodeIdThrowsException() {
+        NodeDto blankNode = new NodeDto("  ", "trigger", new PositionDto(0, 0), Map.of());
+        WorkflowGraphDto graph = new WorkflowGraphDto(List.of(blankNode), List.of());
+
+        InvalidWorkflowGraphException ex = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(graph));
+        assertEquals("INVALID_NODE_ID", ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Should reject duplicate node IDs")
+    void testDuplicateNodeIdThrowsException() {
+        NodeDto node1 = new NodeDto("node_1", "trigger", new PositionDto(0, 0), Map.of());
+        NodeDto node2 = new NodeDto("node_1", "action", new PositionDto(100, 100), Map.of());
+        WorkflowGraphDto graph = new WorkflowGraphDto(List.of(node1, node2), List.of());
+
+        InvalidWorkflowGraphException ex = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(graph));
+        assertEquals("DUPLICATE_NODE_ID", ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Should reject edge with invalid source")
+    void testInvalidEdgeSourceThrowsException() {
+        NodeDto trigger = new NodeDto("node_1", "trigger", new PositionDto(0, 0), Map.of());
+        EdgeDto badEdge = new EdgeDto("e1", "ghost_source", "node_1");
+        WorkflowGraphDto graph = new WorkflowGraphDto(List.of(trigger), List.of(badEdge));
+
+        InvalidWorkflowGraphException ex = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(graph));
+        assertEquals("INVALID_EDGE_SOURCE", ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("Should reject trigger node having incoming edges")
+    void testTriggerWithIncomingEdgeThrowsException() {
+        NodeDto trigger = new NodeDto("node_trigger", "trigger", new PositionDto(0, 0), Map.of());
+        NodeDto action = new NodeDto("node_action", "action", new PositionDto(100, 100), Map.of());
+        EdgeDto invalidIncoming = new EdgeDto("e1", "node_action", "node_trigger");
+        WorkflowGraphDto graph = new WorkflowGraphDto(List.of(trigger, action), List.of(invalidIncoming));
+
+        InvalidWorkflowGraphException ex = assertThrows(InvalidWorkflowGraphException.class,
+                () -> validationService.validateWorkflowGraph(graph));
+        assertEquals("TRIGGER_HAS_INCOMING_EDGE", ex.getErrorCode());
+    }
 }
