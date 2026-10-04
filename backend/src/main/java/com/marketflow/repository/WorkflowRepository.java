@@ -16,5 +16,8 @@ public interface WorkflowRepository extends JpaRepository<Workflow, String> {
 
     List<Workflow> findByUserIdOrderByUpdatedAtDesc(String userId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT w FROM Workflow w WHERE w.userId = :userId OR w.userId IS NULL ORDER BY w.updatedAt DESC")
+    List<Workflow> findAccessibleWorkflows(@org.springframework.data.repository.query.Param("userId") String userId);
+
     long countByStatus(WorkflowStatus status);
 }

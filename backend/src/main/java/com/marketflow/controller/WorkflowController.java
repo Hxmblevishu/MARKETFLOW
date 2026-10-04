@@ -58,4 +58,16 @@ public class WorkflowController {
     public ResponseEntity<WorkflowDetailResponse> duplicateWorkflow(@PathVariable String id) {
         return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.duplicateWorkflow(id));
     }
+
+    @GetMapping("/{id}/export")
+    @Operation(summary = "Export workflow", description = "Exports workflow definition bundle as portable JSON with integrity checksum")
+    public ResponseEntity<WorkflowExportDto> exportWorkflow(@PathVariable String id) {
+        return ResponseEntity.ok(workflowService.exportWorkflow(id));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "Import workflow", description = "Imports a workflow definition bundle and recreates the DAG canvas")
+    public ResponseEntity<WorkflowDetailResponse> importWorkflow(@Valid @RequestBody WorkflowExportDto request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.importWorkflow(request));
+    }
 }

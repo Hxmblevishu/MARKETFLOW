@@ -35,18 +35,33 @@ public class ActionHandler implements NodeExecutor {
     private final JsonPathExpressionResolver expressionResolver;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final com.marketflow.security.SsrfValidator ssrfValidator;
+
+    public ActionHandler(JsonPathExpressionResolver expressionResolver, ObjectMapper objectMapper) {
+        this(expressionResolver, objectMapper, RestClient.builder().build(), new com.marketflow.security.SsrfValidator());
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ActionHandler(JsonPathExpressionResolver expressionResolver, ObjectMapper objectMapper) {
-        this(expressionResolver, objectMapper, RestClient.builder().build());
+    public ActionHandler(JsonPathExpressionResolver expressionResolver,
+                         ObjectMapper objectMapper,
+                         com.marketflow.security.SsrfValidator ssrfValidator) {
+        this(expressionResolver, objectMapper, RestClient.builder().build(), ssrfValidator);
     }
 
     public ActionHandler(JsonPathExpressionResolver expressionResolver,
                          ObjectMapper objectMapper,
                          RestClient restClient) {
+        this(expressionResolver, objectMapper, restClient, new com.marketflow.security.SsrfValidator());
+    }
+
+    public ActionHandler(JsonPathExpressionResolver expressionResolver,
+                         ObjectMapper objectMapper,
+                         RestClient restClient,
+                         com.marketflow.security.SsrfValidator ssrfValidator) {
         this.expressionResolver = expressionResolver;
         this.objectMapper = objectMapper;
         this.restClient = restClient;
+        this.ssrfValidator = ssrfValidator != null ? ssrfValidator : new com.marketflow.security.SsrfValidator();
     }
 
     @Override
@@ -106,6 +121,7 @@ public class ActionHandler implements NodeExecutor {
         boolean failOnError = Boolean.parseBoolean(data.getOrDefault("failOnError", "false").toString());
         if (webhookUrl != null && !webhookUrl.isBlank() && webhookUrl.startsWith("http")) {
             try {
+                ssrfValidator.validateUrl(webhookUrl);
                 restClient.post()
                         .uri(webhookUrl)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,6 +129,11 @@ public class ActionHandler implements NodeExecutor {
                         .retrieve()
                         .toBodilessEntity();
                 webhookDelivered = true;
+            } catch (SecurityException secEx) {
+                log.warn("Blocked SSRF Slack webhook attempt: {}", secEx.getMessage());
+                if (failOnError) {
+                    return NodeExecutionResult.failed(node.getId(), secEx.getMessage());
+                }
             } catch (Exception ex) {
                 log.warn("Slack webhook dispatch failed, falling back to simulated receipt: {}", ex.getMessage());
                 if (failOnError) {
@@ -227,6 +248,16 @@ public class ActionHandler implements NodeExecutor {
         }
 
         String resolvedUrl = expressionResolver.resolveString(rawUrl.toString(), context);
+        try {
+            ssrfValidator.validateUrl(resolvedUrl);
+        } catch (SecurityException secEx) {
+            log.warn("Blocked SSRF outbound HTTP attempt: {}", secEx.getMessage());
+            return NodeExecutionResult.failed(node.getId(), secEx.getMessage());
+        } catch (Exception ex) {
+            log.warn("Invalid outbound HTTP URL: {}", ex.getMessage());
+            return NodeExecutionResult.failed(node.getId(), ex.getMessage());
+        }
+
         String methodStr = data.getOrDefault("method", "POST").toString().toUpperCase();
         HttpMethod method = HttpMethod.valueOf(methodStr);
 

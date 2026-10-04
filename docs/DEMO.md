@@ -14,11 +14,12 @@ Demonstrate that a marketing executive can:
 
 ## Demo Account
 
-> Replace these credentials with the actual seeded account before submission.
+Pre-seeded demo credentials for judges and evaluation:
 
 ```text
 Email: judge@marketflow.demo
-Password: <SET_BEFORE_SUBMISSION>
+Password: JudgeDemo2026!
+Role: ROLE_USER
 ```
 
 ## Deployed Links
@@ -173,9 +174,15 @@ MARKETFLOW turns those processes into visual, executable workflows.
 
 Natural-language instructions can be converted into editable workflows.
 
-### Technical
+### Technical & Enterprise Architecture
 
-The system has a workflow graph, execution engine, persistence and step-level execution logs.
+The system has a resilient DAG workflow execution engine, dynamic JSONPath variable evaluation, live WebSocket execution streaming (`/topic/executions/{id}`), SHA-256 workflow bundle export/import, and step-level execution logs.
+
+### Enterprise Security & Multi-Device Session Management
+
+- **JWT Token Rotation & Multi-Device Logout:** 15-minute access tokens with single-use rotating 7-day refresh tokens. Independent session termination: logging out on one device preserves other active devices.
+- **IDOR / BOLA Defense:** Strict multi-tenant isolation ensuring unauthorized users cannot read, modify, or delete another user's workflows (RFC 7807 403 Forbidden).
+- **SSRF Outbound Guard:** Prevents cloud metadata theft (`169.254.169.254`) and internal private network scanning from HTTP nodes.
 
 ### UX
 

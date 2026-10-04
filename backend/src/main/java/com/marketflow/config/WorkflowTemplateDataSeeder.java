@@ -27,24 +27,43 @@ public class WorkflowTemplateDataSeeder implements CommandLineRunner {
     private final com.marketflow.repository.WorkflowRepository workflowRepository;
     private final com.marketflow.repository.ExecutionRepository executionRepository;
     private final com.marketflow.repository.ExecutionStepRepository stepRepository;
+    private final com.marketflow.repository.UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     public WorkflowTemplateDataSeeder(WorkflowTemplateRepository templateRepository,
                                       com.marketflow.repository.WorkflowRepository workflowRepository,
                                       com.marketflow.repository.ExecutionRepository executionRepository,
                                       com.marketflow.repository.ExecutionStepRepository stepRepository,
+                                      com.marketflow.repository.UserRepository userRepository,
                                       ObjectMapper objectMapper) {
         this.templateRepository = templateRepository;
         this.workflowRepository = workflowRepository;
         this.executionRepository = executionRepository;
         this.stepRepository = stepRepository;
+        this.userRepository = userRepository;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public void run(String... args) {
+        seedDemoUser();
         seedTemplates();
         seedDemoWorkflowAndExecutions();
+    }
+
+    private void seedDemoUser() {
+        if (!userRepository.existsByEmail("judge@marketflow.demo")) {
+            log.info("Seeding default demo judge user into database...");
+            org.springframework.security.crypto.password.PasswordEncoder encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+            com.marketflow.model.User judge = new com.marketflow.model.User(
+                    "judge@marketflow.demo",
+                    encoder.encode("JudgeDemo2026!"),
+                    "Marketflow Demo Judge",
+                    com.marketflow.model.enums.UserRole.ROLE_USER
+            );
+            userRepository.save(judge);
+            log.info("Default judge user seeded: judge@marketflow.demo");
+        }
     }
 
     private void seedTemplates() {

@@ -9,15 +9,20 @@ import com.marketflow.model.Workflow;
 import com.marketflow.model.enums.WorkflowStatus;
 import com.marketflow.repository.ExecutionRepository;
 import com.marketflow.repository.WorkflowRepository;
+import com.marketflow.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,8 +59,14 @@ public class WorkflowService {
 
         String definitionJson = serializeGraph(graph);
         Workflow workflow = new Workflow(request.getName(), request.getDescription(), definitionJson);
-        Workflow saved = workflowRepository.save(workflow);
 
+        // Multi-Tenant Isolation: Associate workflow with authenticated user
+        String currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId != null) {
+            workflow.setUserId(currentUserId);
+        }
+
+        Workflow saved = workflowRepository.save(workflow);
         return toWorkflowDetailResponse(saved, nodes, edges);
     }
 
@@ -64,13 +75,27 @@ public class WorkflowService {
         Workflow workflow = workflowRepository.findById(id)
                 .orElseThrow(() -> new WorkflowNotFoundException("Workflow not found with id: " + id));
 
+        // IDOR Defense: verify ownership
+        checkOwnership(workflow, "read");
+
         WorkflowGraphDto graph = parseGraphDefinition(workflow.getDefinition());
         return toWorkflowDetailResponse(workflow, graph.getNodes(), graph.getEdges());
     }
 
     @Transactional(readOnly = true)
     public WorkflowListResponse listWorkflows() {
-        List<Workflow> workflows = workflowRepository.findAllByOrderByUpdatedAtDesc();
+        String currentUserId = SecurityUtils.getCurrentUserId();
+        boolean isAdmin = SecurityUtils.isCurrentUserAdmin();
+
+        List<Workflow> workflows;
+        if (isAdmin || currentUserId == null) {
+            // Admins or unauthenticated (if public mode) see all
+            workflows = workflowRepository.findAllByOrderByUpdatedAtDesc();
+        } else {
+            // Regular user sees their owned workflows + public system templates (userId == null)
+            workflows = workflowRepository.findAccessibleWorkflows(currentUserId);
+        }
+
         List<WorkflowSummaryDto> summaries = workflows.stream()
                 .map(w -> new WorkflowSummaryDto(w.getId(), w.getName(), w.getStatus(), w.getUpdatedAt()))
                 .collect(Collectors.toList());
@@ -82,6 +107,9 @@ public class WorkflowService {
         log.info("Updating workflow [{}]", id);
         Workflow workflow = workflowRepository.findById(id)
                 .orElseThrow(() -> new WorkflowNotFoundException("Workflow not found with id: " + id));
+
+        // IDOR Defense: verify caller owns this workflow
+        checkOwnership(workflow, "modify");
 
         if (request.getName() != null && !request.getName().isBlank()) {
             workflow.setName(request.getName());
@@ -115,6 +143,9 @@ public class WorkflowService {
         Workflow workflow = workflowRepository.findById(id)
                 .orElseThrow(() -> new WorkflowNotFoundException("Workflow not found with id: " + id));
 
+        // IDOR Defense: verify caller owns this workflow
+        checkOwnership(workflow, "delete");
+
         // Cascade delete executions
         List<Execution> executions = executionRepository.findByWorkflowIdOrderByCreatedAtDesc(id);
         if (!executions.isEmpty()) {
@@ -130,13 +161,91 @@ public class WorkflowService {
         Workflow original = workflowRepository.findById(id)
                 .orElseThrow(() -> new WorkflowNotFoundException("Workflow not found with id: " + id));
 
+        checkOwnership(original, "duplicate");
+
         String duplicateName = "Copy of " + original.getName();
         Workflow copy = new Workflow(duplicateName, original.getDescription(), original.getDefinition());
         copy.setStatus(WorkflowStatus.DRAFT);
+        copy.setUserId(SecurityUtils.getCurrentUserId());
+
         Workflow saved = workflowRepository.save(copy);
 
         WorkflowGraphDto graph = parseGraphDefinition(saved.getDefinition());
         return toWorkflowDetailResponse(saved, graph.getNodes(), graph.getEdges());
+    }
+
+    @Transactional(readOnly = true)
+    public WorkflowExportDto exportWorkflow(String id) {
+        log.info("Exporting workflow [{}]", id);
+        Workflow workflow = workflowRepository.findById(id)
+                .orElseThrow(() -> new WorkflowNotFoundException("Workflow not found with id: " + id));
+
+        checkOwnership(workflow, "export");
+
+        WorkflowGraphDto graph = parseGraphDefinition(workflow.getDefinition());
+        String checksum = calculateSha256(workflow.getDefinition());
+
+        return new WorkflowExportDto(
+                "1.0",
+                Instant.now().toString(),
+                workflow.getName(),
+                workflow.getDescription(),
+                graph.getNodes(),
+                graph.getEdges(),
+                checksum
+        );
+    }
+
+    @Transactional
+    public WorkflowDetailResponse importWorkflow(WorkflowExportDto exportDto) {
+        log.info("Importing workflow bundle: '{}'", exportDto.getName());
+        List<NodeDto> nodes = exportDto.getNodes() != null ? exportDto.getNodes() : new ArrayList<>();
+        List<EdgeDto> edges = exportDto.getEdges() != null ? exportDto.getEdges() : new ArrayList<>();
+
+        WorkflowGraphDto graph = new WorkflowGraphDto(nodes, edges);
+        if (!nodes.isEmpty()) {
+            validationService.validateWorkflowGraph(graph);
+        }
+
+        String definitionJson = serializeGraph(graph);
+        Workflow workflow = new Workflow(exportDto.getName(), exportDto.getDescription(), definitionJson);
+        workflow.setStatus(WorkflowStatus.DRAFT);
+        workflow.setUserId(SecurityUtils.getCurrentUserId());
+
+        Workflow saved = workflowRepository.save(workflow);
+        return toWorkflowDetailResponse(saved, nodes, edges);
+    }
+
+    private void checkOwnership(Workflow workflow, String action) {
+        String currentUserId = SecurityUtils.getCurrentUserId();
+        boolean isAdmin = SecurityUtils.isCurrentUserAdmin();
+
+        // Workflows with no owner (userId == null) are system/shared templates accessible to all users
+        if (workflow.getUserId() == null || isAdmin) {
+            return;
+        }
+
+        if (currentUserId == null || !workflow.getUserId().equals(currentUserId)) {
+            log.warn("IDOR Defense: Unauthorized attempt by user [{}] to {} workflow [{}] owned by [{}]",
+                    currentUserId, action, workflow.getId(), workflow.getUserId());
+            throw new AccessDeniedException("You do not have permission to " + action + " this workflow");
+        }
+    }
+
+    private String calculateSha256(String data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(data.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            return UUID.randomUUID().toString();
+        }
     }
 
     public WorkflowGraphDto parseGraphDefinition(String definition) {

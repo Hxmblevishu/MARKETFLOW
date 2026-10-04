@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@org.springframework.security.test.context.support.WithMockUser(username = "judge@marketflow.demo", roles = {"USER"})
 @DisplayName("Phase 8: REST API Controllers & Webhook Integration Tests")
 class Phase8RestControllersTests {
 

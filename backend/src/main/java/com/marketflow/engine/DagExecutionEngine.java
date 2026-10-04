@@ -12,6 +12,8 @@ import com.marketflow.model.enums.ExecutionStatus;
 import com.marketflow.model.enums.StepStatus;
 import com.marketflow.repository.ExecutionRepository;
 import com.marketflow.repository.ExecutionStepRepository;
+import com.marketflow.dto.ExecutionEventDto;
+import com.marketflow.service.ExecutionWebSocketBroadcaster;
 import com.marketflow.service.GraphValidationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,17 +36,29 @@ public class DagExecutionEngine {
     private final ExecutionRepository executionRepository;
     private final ExecutionStepRepository stepRepository;
     private final ObjectMapper objectMapper;
+    private final ExecutionWebSocketBroadcaster eventBroadcaster;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DagExecutionEngine(List<NodeExecutor> nodeExecutors,
+                              GraphValidationService validationService,
+                              ExecutionRepository executionRepository,
+                              ExecutionStepRepository stepRepository,
+                              ObjectMapper objectMapper,
+                              ExecutionWebSocketBroadcaster eventBroadcaster) {
+        this.nodeExecutors = nodeExecutors;
+        this.validationService = validationService;
+        this.executionRepository = executionRepository;
+        this.stepRepository = stepRepository;
+        this.objectMapper = objectMapper;
+        this.eventBroadcaster = eventBroadcaster;
+    }
 
     public DagExecutionEngine(List<NodeExecutor> nodeExecutors,
                               GraphValidationService validationService,
                               ExecutionRepository executionRepository,
                               ExecutionStepRepository stepRepository,
                               ObjectMapper objectMapper) {
-        this.nodeExecutors = nodeExecutors;
-        this.validationService = validationService;
-        this.executionRepository = executionRepository;
-        this.stepRepository = stepRepository;
-        this.objectMapper = objectMapper;
+        this(nodeExecutors, validationService, executionRepository, stepRepository, objectMapper, null);
     }
 
     @Transactional
@@ -54,6 +68,9 @@ public class DagExecutionEngine {
         }
         log.info("Starting execution [{}] for workflow [{}] - {}", execution.getId(), workflow.getId(), workflow.getName());
         ExecutionContext context = new ExecutionContext(execution.getId(), workflow.getId(), inputPayload);
+        if (eventBroadcaster != null) {
+            eventBroadcaster.broadcastEvent(ExecutionEventDto.executionStarted(execution.getId(), workflow.getId()));
+        }
 
         try {
             WorkflowGraphDto graph = parseGraphDefinition(workflow.getDefinition());
@@ -86,6 +103,9 @@ public class DagExecutionEngine {
 
             while (!queue.isEmpty()) {
                 NodeDto currentNode = queue.poll();
+                if (eventBroadcaster != null) {
+                    eventBroadcaster.broadcastEvent(ExecutionEventDto.nodeStarted(execution.getId(), workflow.getId(), currentNode.getId(), currentNode.getLabel()));
+                }
                 Instant stepStart = Instant.now();
 
                 NodeExecutor executor = findExecutor(currentNode.getType());
@@ -118,10 +138,21 @@ public class DagExecutionEngine {
                 stepRepository.save(step);
                 execution.addStep(step);
 
+                if (eventBroadcaster != null) {
+                    if (result.isSuccess()) {
+                        eventBroadcaster.broadcastEvent(ExecutionEventDto.nodeCompleted(execution.getId(), workflow.getId(), currentNode.getId(), currentNode.getLabel(), result.getStatus() != null ? result.getStatus().name() : "COMPLETED", durationMs, result.getOutputData()));
+                    } else {
+                        eventBroadcaster.broadcastEvent(ExecutionEventDto.nodeFailed(execution.getId(), workflow.getId(), currentNode.getId(), currentNode.getLabel(), durationMs, result.getErrorMessage()));
+                    }
+                }
+
                 if (!result.isSuccess()) {
                     execution.setStatus(ExecutionStatus.FAILED);
                     execution.setErrorMessage("Failed at node [" + currentNode.getId() + "]: " + result.getErrorMessage());
                     execution.setCompletedAt(Instant.now());
+                    if (eventBroadcaster != null) {
+                        eventBroadcaster.broadcastEvent(ExecutionEventDto.executionFinished(execution.getId(), workflow.getId(), "FAILED", execution.getErrorMessage()));
+                    }
                     return executionRepository.save(execution);
                 }
 
@@ -143,12 +174,18 @@ public class DagExecutionEngine {
             execution.setStatus(ExecutionStatus.COMPLETED);
             execution.setOutputData(objectMapper.writeValueAsString(context.getNodeOutputs()));
             execution.setCompletedAt(Instant.now());
+            if (eventBroadcaster != null) {
+                eventBroadcaster.broadcastEvent(ExecutionEventDto.executionFinished(execution.getId(), workflow.getId(), "COMPLETED", null));
+            }
 
         } catch (Exception ex) {
             log.error("Workflow execution failed: {}", ex.getMessage(), ex);
             execution.setStatus(ExecutionStatus.FAILED);
             execution.setErrorMessage(ex.getMessage());
             execution.setCompletedAt(Instant.now());
+            if (eventBroadcaster != null) {
+                eventBroadcaster.broadcastEvent(ExecutionEventDto.executionFinished(execution.getId(), workflow.getId(), "FAILED", ex.getMessage()));
+            }
         }
 
         return executionRepository.save(execution);
